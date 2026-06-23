@@ -122,6 +122,7 @@
         <input type="datetime-local" id="end">
       </div>
       <button class="btn" id="apply">조회</button>
+      <button class="btn ghost" id="resetRange" type="button">초기화</button>
     </div>
   </section>
 
@@ -174,6 +175,7 @@ var RECORDS = [];
 let unit = 'hour';
 let mode = 'interval';
 let chart = null;
+let liveMode = true;   // true = 오늘 00:00~현재 실시간 / false = 사용자가 조회한 고정 기간
 
 // ===== 유틸 =====
 const pad = n => String(n).padStart(2,'0');
@@ -205,7 +207,14 @@ function bucketOf(ms, u){
 }
 
 // ===== 집계 =====
+function todayStartMs(){
+  const n = new Date();
+  return new Date(n.getFullYear(), n.getMonth(), n.getDate(), 0,0,0,0).getTime();
+}
 function getRange(){
+  if(liveMode){                       // 오늘 00:00 ~ 현재 (초 단위 정확 → 방금 들어온 이벤트도 포함)
+    return { s: todayStartMs(), e: Date.now() };
+  }
   const s = new Date(document.getElementById('start').value).getTime();
   const e = new Date(document.getElementById('end').value).getTime();
   return { s, e:isNaN(e)?s:e };
@@ -303,7 +312,15 @@ function renderChart(){
   chart = new Chart(document.getElementById('chart'), cfg);
 }
 
-function refresh(){ renderCards(); renderChart(); }
+function applyLiveRange(){           // 입력칸 표시를 오늘 00:00~현재로 (표시용; 실제 계산은 getRange가 정확히)
+  document.getElementById('start').value = toInputValue(new Date(todayStartMs()));
+  document.getElementById('end').value   = toInputValue(new Date());
+}
+function refresh(){
+  if(liveMode) applyLiveRange();
+  renderCards();
+  renderChart();
+}
 
 // ===== 이벤트 =====
 document.getElementById('unitSeg').addEventListener('click', e=>{
@@ -318,19 +335,17 @@ document.getElementById('modeSeg').addEventListener('click', e=>{
   document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('on',x===b));
   renderChart();
 });
-document.getElementById('apply').addEventListener('click', refresh);
+document.getElementById('apply').addEventListener('click', ()=>{ liveMode=false; refresh(); });      // 지정 기간 고정 조회
+document.getElementById('resetRange').addEventListener('click', ()=>{ liveMode=true; refresh(); });   // 오늘 라이브로 복귀
 document.getElementById('resetZoom').addEventListener('click', ()=>{ if(chart) chart.resetZoom(); });
 
 // ===== 초기화 =====
 (function init(){
-  // 기본 기간: 최근 7일 (실데이터가 들어오는 구간을 바로 볼 수 있게)
-  const now = new Date();
-  const weekAgo = new Date(now.getTime() - 7*24*3600*1000);
-  document.getElementById('start').value = toInputValue(weekAgo);
-  document.getElementById('end').value   = toInputValue(now);
+  // 기본: 오늘 00:00 ~ 현재 (라이브). 새 이벤트 들어올 때마다 카드·그래프 자동 증가.
+  liveMode = true;
   document.getElementById('dataInfo').textContent = 'Firebase 연결 중…';
   buildLegend();
-  refresh();
+  refresh();   // liveMode라 오늘 00:00~지금으로 자동 세팅됨
 })();
 </script>
 
@@ -340,15 +355,16 @@ document.getElementById('resetZoom').addEventListener('click', ()=>{ if(chart) c
   import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-database.js";
 
   // ↓↓↓ Firebase 콘솔에서 복사한 값으로 교체 (databaseURL 꼭 포함!) ↓↓↓
- const firebaseConfig = {
-    apiKey: "AIzaSyBm93SV4xzw4rLn3SSL5yV_iEGysn-RQ4Y",
-    authDomain: "sseudam-78f72.firebaseapp.com",
-    databaseURL: "https://sseudam-78f72-default-rtdb.asia-southeast1.firebasedatabase.app/",
-    projectId: "sseudam-78f72",
-    storageBucket: "sseudam-78f72.firebasestorage.app",
-    messagingSenderId: "716818166499",
-    appId: "1:716818166499:web:120402a681701bf299cbd6"
+  const firebaseConfig = {
+    apiKey: "여기에_apiKey",
+    authDomain: "여기에_authDomain",
+    databaseURL: "https://여기에-프로젝트-default-rtdb.firebasedatabase.app",
+    projectId: "여기에_projectId",
+    storageBucket: "여기에_storageBucket",
+    messagingSenderId: "여기에_messagingSenderId",
+    appId: "여기에_appId"
   };
+
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
 
