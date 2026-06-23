@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>쓰담쓰담 · 분리수거 현황</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js"></script>
+<style>
+  :root{
+    --bg:#F4F6F2;
+    --panel:#FFFFFF;
+    --ink:#1B2420;
+    --muted:#6B7771;
+    --line:#E3E8E2;
+    --accent:#1F6B4A;
+    --accent-ink:#15543A;
+    /* 분류별 색 */
+    --c-can:#C0853A;     /* 캔 (금속/브론즈) */
+    --c-glass:#1FA89C;   /* 유리 (틸) */
+    --c-clear:#3F86DA;   /* 투명 플라스틱 (스카이) */
+    --c-opaque:#8A6BC4;  /* 일반 플라스틱 (바이올렛) */
+    --c-total:#1B2420;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo","Noto Sans KR",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:"SF Mono",ui-monospace,"Roboto Mono",Menlo,Consolas,monospace;}
+  .wrap{max-width:1180px; margin:0 auto; padding:28px 20px 60px;}
+
+  header.top{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:22px;}
+  header.top h1{font-size:22px; font-weight:700; letter-spacing:-.01em; margin:0;}
+  header.top .sub{color:var(--muted); font-size:13px;}
+  .badge{margin-left:auto; font-size:12px; color:var(--accent-ink); background:#E5F0EA;
+    border:1px solid #CFE4D8; padding:4px 10px; border-radius:999px;}
+
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px;}
+  .panel + .panel{margin-top:18px;}
+  .panel-title{font-size:13px; font-weight:600; color:var(--muted); text-transform:uppercase;
+    letter-spacing:.06em; margin:0 0 14px;}
+
+  /* 기간 선택 */
+  .range{display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap;}
+  .field{display:flex; flex-direction:column; gap:6px;}
+  .field label{font-size:12px; color:var(--muted);}
+  .field input{font:inherit; font-size:14px; padding:9px 11px; border:1px solid var(--line);
+    border-radius:9px; background:#FAFBFA; color:var(--ink);}
+  .field input:focus{outline:2px solid #BFE0CF; border-color:var(--accent);}
+  .arrow{color:var(--muted); padding-bottom:9px;}
+  .btn{font:inherit; font-size:14px; font-weight:600; padding:10px 20px; border-radius:9px;
+    border:1px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer;}
+  .btn:hover{background:var(--accent-ink);}
+  .btn.ghost{background:#FAFBFA; color:var(--accent-ink); border-color:var(--line);
+    padding:8px 14px; font-size:13px; font-weight:500;}
+  .btn.ghost:hover{background:#EEF1ED;}
+  .canvas-box{cursor:grab;}
+  .canvas-box:active{cursor:grabbing;}
+
+  /* 요약 카드 */
+  .cards{display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-top:18px;}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:16px;
+    position:relative; overflow:hidden;}
+  .card::before{content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--dot);}
+  .card .k{font-size:13px; color:var(--muted); display:flex; align-items:center; gap:7px;}
+  .card .k i{width:9px; height:9px; border-radius:50%; background:var(--dot); display:inline-block;}
+  .card .v{font-size:30px; font-weight:700; margin-top:8px; letter-spacing:-.02em;}
+  .card .u{font-size:13px; color:var(--muted); font-weight:400; margin-left:3px;}
+
+  /* 차트 영역 */
+  .chart-head{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-bottom:16px;}
+  .seg{display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden;}
+  .seg button{font:inherit; font-size:13px; padding:8px 16px; border:0; background:#FAFBFA;
+    color:var(--muted); cursor:pointer; border-right:1px solid var(--line);}
+  .seg button:last-child{border-right:0;}
+  .seg button.on{background:var(--accent); color:#fff; font-weight:600;}
+  .seg.small button{padding:7px 13px; font-size:12px;}
+  .spacer{flex:1;}
+
+  .chart-body{display:flex; gap:20px;}
+  .legend{flex:0 0 150px; display:flex; flex-direction:column; gap:4px; padding-top:4px;}
+  .legend label{display:flex; align-items:center; gap:9px; font-size:14px; padding:8px 6px;
+    border-radius:8px; cursor:pointer;}
+  .legend label:hover{background:#F4F6F2;}
+  .legend input{accent-color:var(--accent); width:16px; height:16px;}
+  .legend .sw{width:11px; height:11px; border-radius:3px;}
+  .canvas-box{flex:1; min-width:0; height:380px; position:relative;}
+  .empty{position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+    color:var(--muted); font-size:14px;}
+
+  @media (max-width:820px){
+    .cards{grid-template-columns:repeat(2,1fr);}
+    .chart-body{flex-direction:column;}
+    .legend{flex-direction:row; flex-wrap:wrap; flex-basis:auto;}
+    .canvas-box{height:320px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1>쓰담쓰담</h1>
+    <span class="sub">분리수거 투입량 모니터링</span>
+    <span class="badge mono" id="dataInfo">demo data</span>
+  </header>
+
+  <!-- 1. 기간 선택 -->
+  <section class="panel">
+    <p class="panel-title">조회 기간</p>
+    <div class="range">
+      <div class="field">
+        <label for="start">시작</label>
+        <input type="datetime-local" id="start">
+      </div>
+      <span class="arrow">→</span>
+      <div class="field">
+        <label for="end">종료</label>
+        <input type="datetime-local" id="end">
+      </div>
+      <button class="btn" id="apply">조회</button>
+    </div>
+  </section>
+
+  <!-- 요약 카드: 기간 내 누적 -->
+  <div class="cards" id="cards"></div>
+
+  <!-- 2. 시계열 차트 -->
+  <section class="panel" style="margin-top:18px;">
+    <div class="chart-head">
+      <div class="seg" id="unitSeg">
+        <button data-unit="hour" class="on">시간</button>
+        <button data-unit="day">일</button>
+        <button data-unit="week">주</button>
+        <button data-unit="month">월</button>
+      </div>
+      <div class="seg small" id="modeSeg">
+        <button data-mode="interval" class="on">구간별</button>
+        <button data-mode="cumulative">누적</button>
+      </div>
+      <div class="spacer"></div>
+      <span class="sub" style="font-size:12px;color:var(--muted);">휠: 확대/축소 · 드래그: 좌우 이동</span>
+      <button class="btn ghost" id="resetZoom" type="button">확대 초기화</button>
+    </div>
+    <div class="chart-body">
+      <div class="legend" id="legend"></div>
+      <div class="canvas-box">
+        <canvas id="chart"></canvas>
+        <div class="empty" id="empty">선택한 기간에 데이터가 없습니다.</div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+// ===== 분류 정의 =====
+const CATEGORIES = [
+  { key:'can',    label:'캔',           color:getComputedStyle(document.documentElement).getPropertyValue('--c-can').trim()    },
+  { key:'glass',  label:'유리',         color:getComputedStyle(document.documentElement).getPropertyValue('--c-glass').trim()  },
+  { key:'clear',  label:'투명 플라스틱', color:getComputedStyle(document.documentElement).getPropertyValue('--c-clear').trim()  },
+  { key:'opaque', label:'일반 플라스틱', color:getComputedStyle(document.documentElement).getPropertyValue('--c-opaque').trim() },
+];
+
+// ===== 데이터 (Firebase에서 채워짐) =====
+// 아래 <script type="module">의 Firebase 리스너가 window.RECORDS를 채우고 refresh()를 호출함.
+// 형식: { t: epoch(ms), can, glass, clear, opaque } — 이벤트 1건마다 해당 분류만 1.
+var RECORDS = [];
+
+// ===== 상태 =====
+let unit = 'hour';
+let mode = 'interval';
+let chart = null;
+
+// ===== 유틸 =====
+const pad = n => String(n).padStart(2,'0');
+function toInputValue(d){
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function startOfWeek(d){ // 월요일 시작
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const off = (x.getDay()+6)%7;
+  x.setDate(x.getDate()-off);
+  return x;
+}
+function bucketOf(ms, u){
+  const d = new Date(ms);
+  if(u==='hour'){
+    const b=new Date(d.getFullYear(),d.getMonth(),d.getDate(),d.getHours());
+    return { key:b.getTime(), label:`${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}시` };
+  }
+  if(u==='day'){
+    const b=new Date(d.getFullYear(),d.getMonth(),d.getDate());
+    return { key:b.getTime(), label:`${d.getMonth()+1}/${d.getDate()}` };
+  }
+  if(u==='week'){
+    const b=startOfWeek(d);
+    return { key:b.getTime(), label:`${b.getMonth()+1}/${b.getDate()} 주` };
+  }
+  const b=new Date(d.getFullYear(),d.getMonth(),1);
+  return { key:b.getTime(), label:`${b.getFullYear()}.${pad(b.getMonth()+1)}` };
+}
+
+// ===== 집계 =====
+function getRange(){
+  const s = new Date(document.getElementById('start').value).getTime();
+  const e = new Date(document.getElementById('end').value).getTime();
+  return { s, e:isNaN(e)?s:e };
+}
+function aggregate(s, e, u){
+  const map = new Map();
+  for(const r of RECORDS){
+    if(r.t < s || r.t > e) continue;
+    const { key, label } = bucketOf(r.t, u);
+    let row = map.get(key);
+    if(!row){ row={label,can:0,glass:0,clear:0,opaque:0}; map.set(key,row); }
+    for(const c of CATEGORIES) row[c.key]+=r[c.key];
+  }
+  const keys=[...map.keys()].sort((a,b)=>a-b);
+  const out={ labels:keys.map(k=>map.get(k).label) };
+  for(const c of CATEGORIES) out[c.key]=keys.map(k=>map.get(k)[c.key]);
+  return out;
+}
+function totalsInRange(s, e){
+  const sum={can:0,glass:0,clear:0,opaque:0};
+  for(const r of RECORDS){
+    if(r.t<s || r.t>e) continue;
+    for(const c of CATEGORIES) sum[c.key]+=r[c.key];
+  }
+  return sum;
+}
+function runningSum(arr){
+  let acc=0; return arr.map(v=>acc+=v);
+}
+
+// ===== 렌더링 =====
+function renderCards(){
+  const { s, e } = getRange();
+  const sum = totalsInRange(s, e);
+  const total = CATEGORIES.reduce((a,c)=>a+sum[c.key],0);
+  const items = CATEGORIES.map(c=>({label:c.label,color:c.color,val:sum[c.key]}));
+  items.push({label:'합계', color:getComputedStyle(document.documentElement).getPropertyValue('--c-total').trim(), val:total});
+  document.getElementById('cards').innerHTML = items.map(it=>`
+    <div class="card" style="--dot:${it.color}">
+      <div class="k"><i></i>${it.label}</div>
+      <div class="v mono">${it.val.toLocaleString()}<span class="u">개</span></div>
+    </div>`).join('');
+}
+
+function buildLegend(){
+  document.getElementById('legend').innerHTML = CATEGORIES.map(c=>`
+    <label>
+      <input type="checkbox" class="catChk" value="${c.key}" checked>
+      <span class="sw" style="background:${c.color}"></span>${c.label}
+    </label>`).join('');
+  document.querySelectorAll('.catChk').forEach(chk=>chk.addEventListener('change',renderChart));
+}
+
+function renderChart(){
+  const { s, e } = getRange();
+  const agg = aggregate(s, e, unit);
+  const checked = [...document.querySelectorAll('.catChk:checked')].map(c=>c.value);
+
+  const empty = document.getElementById('empty');
+  empty.style.display = agg.labels.length ? 'none' : 'flex';
+
+  const datasets = CATEGORIES.filter(c=>checked.includes(c.key)).map(c=>{
+    const data = mode==='cumulative' ? runningSum(agg[c.key]) : agg[c.key];
+    return {
+      label:c.label, data,
+      backgroundColor:c.color, borderColor:c.color,
+      borderWidth:0, borderRadius:3, maxBarThickness:46,
+    };
+  });
+
+  const cfg = {
+    type:'bar',
+    data:{ labels:agg.labels, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:'index', intersect:false },
+      plugins:{
+        legend:{ display:false },
+        tooltip:{ callbacks:{ label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}개` } },
+        zoom:{
+          pan:{ enabled:true, mode:'x', threshold:5 },
+          zoom:{ wheel:{ enabled:true, speed:0.12 }, pinch:{ enabled:true }, mode:'x' },
+        },
+      },
+      scales:{
+        x:{ grid:{display:false}, ticks:{ maxRotation:0, autoSkip:true, maxTicksLimit:12,
+            font:{family:'monospace',size:11} } },
+        y:{ beginAtZero:true, grid:{color:'#EEF1ED'},
+            ticks:{ font:{family:'monospace',size:11}, precision:0 },
+            title:{ display:true, text:(mode==='cumulative'?'누적 ':'')+'투입량 (개)', font:{size:11}, color:'#6B7771' } },
+      },
+    },
+  };
+  if(chart) chart.destroy();
+  chart = new Chart(document.getElementById('chart'), cfg);
+}
+
+function refresh(){ renderCards(); renderChart(); }
+
+// ===== 이벤트 =====
+document.getElementById('unitSeg').addEventListener('click', e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  unit=b.dataset.unit;
+  document.querySelectorAll('#unitSeg button').forEach(x=>x.classList.toggle('on',x===b));
+  renderChart();
+});
+document.getElementById('modeSeg').addEventListener('click', e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  mode=b.dataset.mode;
+  document.querySelectorAll('#modeSeg button').forEach(x=>x.classList.toggle('on',x===b));
+  renderChart();
+});
+document.getElementById('apply').addEventListener('click', refresh);
+document.getElementById('resetZoom').addEventListener('click', ()=>{ if(chart) chart.resetZoom(); });
+
+// ===== 초기화 =====
+(function init(){
+  // 기본 기간: 최근 7일 (실데이터가 들어오는 구간을 바로 볼 수 있게)
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7*24*3600*1000);
+  document.getElementById('start').value = toInputValue(weekAgo);
+  document.getElementById('end').value   = toInputValue(now);
+  document.getElementById('dataInfo').textContent = 'Firebase 연결 중…';
+  buildLegend();
+  refresh();
+})();
+</script>
+
+<!-- ===== Firebase 연결 (여기 firebaseConfig만 네 값으로 바꾸면 됨) ===== -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js";
+  import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.15.0/firebase-database.js";
+
+  // ↓↓↓ Firebase 콘솔에서 복사한 값으로 교체 (databaseURL 꼭 포함!) ↓↓↓
+ const firebaseConfig = {
+    apiKey: "AIzaSyBm93SV4xzw4rLn3SSL5yV_iEGysn-RQ4Y",
+    authDomain: "sseudam-78f72.firebaseapp.com",
+    databaseURL: "https://sseudam-78f72-default-rtdb.asia-southeast1.firebasedatabase.app/",
+    projectId: "sseudam-78f72",
+    storageBucket: "sseudam-78f72.firebasestorage.app",
+    messagingSenderId: "716818166499",
+    appId: "1:716818166499:web:120402a681701bf299cbd6"
+  };
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  // events 경로를 실시간 구독 → 새 쓰레기 투입되면 차트도 즉시 갱신됨
+  onValue(ref(db, "events"), (snap) => {
+    const val = snap.val() || {};
+    const recs = [];
+    for (const key in val) {
+      const e = val[key];
+      if (!e || typeof e.t !== "number") continue;
+      const rec = { t: e.t, can:0, glass:0, clear:0, opaque:0 };
+      if (Object.prototype.hasOwnProperty.call(rec, e.type)) rec[e.type] = 1;
+      recs.push(rec);
+    }
+    recs.sort((a, b) => a.t - b.t);
+    window.RECORDS = recs;
+    const badge = document.getElementById("dataInfo");
+    if (badge) badge.textContent = `live · ${recs.length.toLocaleString()} events`;
+    if (window.refresh) window.refresh();
+  }, (err) => {
+    const badge = document.getElementById("dataInfo");
+    if (badge) badge.textContent = "Firebase 연결 실패";
+    console.error("Firebase 읽기 오류:", err);
+  });
+</script>
+</body>
+</html>
